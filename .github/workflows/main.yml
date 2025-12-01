@@ -1,0 +1,87 @@
+name: Build n8n & code-server Deb
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag for the deb file'
+        required: true
+        default: '1.0.0'
+
+jobs:
+  build_deb:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Ruby (for FPM)
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.0'
+
+      - name: Install FPM
+        run: gem install fpm
+
+      - name: Prepare Directory Structure
+        run: |
+          # Create a staging directory to simulate the file system
+          mkdir -p build_root/opt/n8n-bundle
+          mkdir -p build_root/usr/bin
+          
+          # We will install the node modules into /opt/n8n-bundle
+          # This keeps them isolated from the system node_modules
+          echo "Installing n8n and code-server..."
+          npm install --prefix ./build_root/opt/n8n-bundle -g n8n code-server
+          
+          # Create Symlinks so you can type 'n8n' or 'code-server' globally
+          # The paths inside the symlink must point to where they WILL be on the user's machine
+          ln -s /opt/n8n-bundle/bin/n8n ./build_root/usr/bin/n8n
+          ln -s /opt/n8n-bundle/bin/code-server ./build_root/usr/bin/code-server
+
+      - name: Create Systemd Service (Optional)
+        # This creates a service file so you can run 'systemctl start n8n-server'
+        run: |
+          mkdir -p build_root/etc/systemd/system
+          
+          # Create n8n service file
+          cat <<EOT >> build_root/etc/systemd/system/n8n-server.service
+          [Unit]
+          Description=n8n Workflow Automation
+          After=network.target
+
+          [Service]
+          Type=simple
+          User=root
+          ExecStart=/usr/bin/n8n start
+          Restart=always
+
+          [Install]
+          WantedBy=multi-user.target
+          EOT
+
+      - name: Build .deb File
+        run: |
+          # Use FPM to wrap the build_root directory into a .deb file
+          fpm \
+            -s dir \
+            -t deb \
+            -n n8n-code-server-bundle \
+            -v ${{ inputs.version }} \
+            -a all \
+            --depends nodejs \
+            --depends libatomic1 \
+            --description "A bundle containing n8n and code-server" \
+            -C build_root \
+            .
+
+      - name: Upload Deb Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: n8n-code-server-deb
+          path: "*.deb"
