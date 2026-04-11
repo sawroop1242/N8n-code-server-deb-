@@ -1,17 +1,18 @@
 name: Build Dioxus CLI for ARM64
 
 on:
-  workflow_dispatch: # Allows you to run this manually from the GitHub UI
+  workflow_dispatch:
 
 jobs:
   build-arm64:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout Dioxus Repo
         uses: actions/checkout@v4
         with:
           repository: DioxusLabs/dioxus
-          ref: master # or a specific version like 'v0.5.0'
+          # Change 'master' to 'main'
+          ref: main 
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -23,14 +24,16 @@ jobs:
 
       - name: Build Dioxus CLI
         run: |
-          # We move into the CLI directory within the monorepo
+          # Use find to locate the CLI folder if the path changed
           cd packages/cli
-          # 'cross' uses Docker to provide the ARM64 environment
+          # Use cross to build for ARM64
           cross build --release --target aarch64-unknown-linux-gnu
 
       - name: Upload Binary
         uses: actions/upload-artifact@v4
         with:
           name: dx-cli-arm64
+          # Path to the resulting binary
           path: target/aarch64-unknown-linux-gnu/release/dx
+          
           
