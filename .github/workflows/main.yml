@@ -11,7 +11,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: DioxusLabs/dioxus
-          # Change 'master' to 'main'
           ref: main 
 
       - name: Install Rust
@@ -22,18 +21,39 @@ jobs:
       - name: Install Cross-rs
         run: cargo install cross --git https://github.com/cross-rs/cross
 
-      - name: Build Dioxus CLI
+      - name: Configure Cross for OpenSSL
         run: |
-          # Use find to locate the CLI folder if the path changed
-          cd packages/cli
-          # Use cross to build for ARM64
-          cross build --release --target aarch64-unknown-linux-gnu
+          # Create a Cross.toml file dynamically to inject ARM64 C-dependencies
+          cat << 'EOF' > Cross.toml
+          [target.aarch64-unknown-linux-gnu]
+          # Install ARM64 headers right before building
+          pre-build = [
+              "dpkg --add-architecture arm64",
+              "apt-get update",
+              "apt-get install --assume-yes libssl-dev:arm64 pkg-config"
+          ]
+
+          # Tell cross to pass our pkg-config environment variables into the Docker container
+          [build.env]
+          passthrough = [
+              "PKG_CONFIG_ALLOW_CROSS",
+              "PKG_CONFIG_PATH"
+          ]
+          EOF
+
+      - name: Build Dioxus CLI
+        env:
+          # Point pkg-config to the newly installed ARM64 OpenSSL directory
+          PKG_CONFIG_ALLOW_CROSS: 1
+          PKG_CONFIG_PATH: /usr/lib/aarch64-linux-gnu/pkgconfig/
+        run: |
+          # Build from the workspace root so it respects our Cross.toml
+          cross build -p dioxus-cli --release --target aarch64-unknown-linux-gnu
 
       - name: Upload Binary
         uses: actions/upload-artifact@v4
         with:
           name: dx-cli-arm64
-          # Path to the resulting binary
+          # Because we built from the root, the target folder is here:
           path: target/aarch64-unknown-linux-gnu/release/dx
-          
           
